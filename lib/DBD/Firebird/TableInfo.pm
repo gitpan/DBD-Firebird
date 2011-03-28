@@ -1,6 +1,6 @@
 use strict;
 
-package DBD::InterBase::TableInfo;
+package DBD::Firebird::TableInfo;
 
 sub factory {
     my (undef, $dbh) = @_;
@@ -11,14 +11,14 @@ sub factory {
     $dbh->trace_msg("TableInfo factory($dbh [$vers])");
 
     if ($vers =~ /firebird (\d\.\d+)/i and $1 >= 2.1) {
-        $klass = 'DBD::InterBase::TableInfo::Firebird21';
+        $klass = 'DBD::Firebird::TableInfo::Firebird21';
     } else {
-        $klass = 'DBD::InterBase::TableInfo::Basic';
+        $klass = 'DBD::Firebird::TableInfo::Basic';
     }
 
     eval "require $klass";
     if ($@) {
-        $dbh->set_err(1, "DBD::InterBase::TableInfo factory: $@");
+        $dbh->set_err(1, "DBD::Firebird::TableInfo factory: $@");
         return undef;
     }
     $klass->new() if $klass;

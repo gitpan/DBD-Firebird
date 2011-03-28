@@ -1,5 +1,5 @@
 /*
-   $Id: InterBase.h 183 2001-12-20 18:01:23Z danielritz $
+   $Id: Firebird.h 183 2001-12-20 18:01:23Z danielritz $
 
    Copyright (c) 1999,2000  Edwin Pratomo
 
@@ -39,4 +39,4 @@ int  dbd_st_STORE_attrib _((SV *sth, imp_sth_t *imp_sth, SV *keysv, SV *valuesv)
 SV  *dbd_st_FETCH_attrib _((SV *sth, imp_sth_t *imp_sth, SV *keysv));
 
 
-/* end of InterBase.h */
+/* end of Firebird.h */

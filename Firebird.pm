@@ -1,4 +1,4 @@
-#   $Id: InterBase.pm 399 2008-01-08 08:51:35Z edpratomo $
+#   $Id: Firebird.pm 399 2008-01-08 08:51:35Z edpratomo $
 #
 #   Copyright (c) 1999-2008 Edwin Pratomo
 #
@@ -7,7 +7,7 @@
 
 require 5.008_001;
 
-package DBD::InterBase;
+package DBD::Firebird;
 use strict;
 use Carp;
 
@@ -17,9 +17,9 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '0.50';
+$VERSION = '0.52';
 
-bootstrap DBD::InterBase $VERSION;
+bootstrap DBD::Firebird $VERSION;
 
 use vars qw($VERSION $err $errstr $drh);
 
@@ -41,11 +41,11 @@ sub driver
 
     $class .= "::dr";
 
-    $drh = DBI::_new_drh($class, {'Name' => 'InterBase',
+    $drh = DBI::_new_drh($class, {'Name' => 'Firebird',
                                   'Version' => $VERSION,
-                                  'Err'    => \$DBD::InterBase::err,
-                                  'Errstr' => \$DBD::InterBase::errstr,
-                                  'Attribution' => 'DBD::InterBase by Edwin Pratomo and Daniel Ritz'});
+                                  'Err'    => \$DBD::Firebird::err,
+                                  'Errstr' => \$DBD::Firebird::errstr,
+                                  'Attribution' => 'DBD::Firebird by Edwin Pratomo and Daniel Ritz'});
     $drh;
 }
 
@@ -98,7 +98,7 @@ sub _OdbcParse($$$)
 }
 
 
-package DBD::InterBase::dr;
+package DBD::Firebird::dr;
 
 sub connect 
 {
@@ -115,7 +115,7 @@ sub connect
         'password' => $dbpasswd
     };
 
-    DBD::InterBase->_OdbcParse($dsn, $private_attr_hash,
+    DBD::Firebird->_OdbcParse($dsn, $private_attr_hash,
                                ['database', 'host', 'port', 'ib_role', 'ib_dbkey_scope',
                                 'ib_charset', 'ib_dialect', 'ib_cache', 'ib_lc_time']);
     $private_attr_hash->{database} ||= $ENV{ISC_DATABASE}; #"employee.fdb"
@@ -123,13 +123,13 @@ sub connect
     # second attr args will be retrieved using DBIc_IMP_DATA
     my $dbh = DBI::_new_dbh($drh, {}, $private_attr_hash);
 
-    DBD::InterBase::db::_login($dbh, $dsn, $dbuser, $dbpasswd, $attr) 
+    DBD::Firebird::db::_login($dbh, $dsn, $dbuser, $dbpasswd, $attr) 
         or return undef;
 
     $dbh;
 }
 
-package DBD::InterBase::db;
+package DBD::Firebird::db;
 use strict;
 use Carp;
 
@@ -145,7 +145,7 @@ sub do
     } 
     else 
     {
-        $rows = DBD::InterBase::db::_do($dbh, $statement, $attr) or return undef;
+        $rows = DBD::Firebird::db::_do($dbh, $statement, $attr) or return undef;
     }
     ($rows == 0) ? "0E0" : $rows;
 }
@@ -155,7 +155,7 @@ sub prepare
     my ($dbh, $statement, $attribs) = @_;
     
     my $sth = DBI::_new_sth($dbh, {'Statement' => $statement });
-    DBD::InterBase::st::_prepare($sth, $statement, $attribs)
+    DBD::Firebird::st::_prepare($sth, $statement, $attribs)
         or return undef;
     $sth;
 }
@@ -193,11 +193,11 @@ sub table_info
 {
     my ($self, $cat, $schem, $name, $type, $attr) = @_;
 
-    require DBD::InterBase::TableInfo;
+    require DBD::Firebird::TableInfo;
 
     my $ti = ($self->{private_table_info}
                ||=
-              DBD::InterBase::TableInfo->factory($self));
+              DBD::Firebird::TableInfo->factory($self));
 
     no warnings 'uninitialized';
     if ($cat eq '%' and $schem eq '' and $name eq '') {
@@ -224,7 +224,7 @@ sub ping
 
     local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
     local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
-    my $ret = DBD::InterBase::db::_ping($dbh);
+    my $ret = DBD::Firebird::db::_ping($dbh);
 
     return $ret;
 }
@@ -234,8 +234,8 @@ sub ping
 
 sub get_info {
     my($dbh, $info_type) = @_;
-    require DBD::InterBase::GetInfo;
-    my $v = $DBD::InterBase::GetInfo::info{int($info_type)};
+    require DBD::Firebird::GetInfo;
+    my $v = $DBD::Firebird::GetInfo::info{int($info_type)};
     $v = $v->($dbh) if ref $v eq 'CODE';
     return $v;
 }
@@ -246,8 +246,8 @@ sub get_info {
 sub type_info_all
 {
     my ($dbh) = @_;
-    require DBD::InterBase::TypeInfo;
-    return [ @$DBD::InterBase::TypeInfo::type_info_all ];
+    require DBD::Firebird::TypeInfo;
+    return [ @$DBD::Firebird::TypeInfo::type_info_all ];
 }
 
 1;
@@ -256,20 +256,20 @@ __END__
 
 =head1 NAME
 
-DBD::InterBase - DBI driver for Firebird and InterBase RDBMS server
+DBD::Firebird - DBI driver for Firebird RDBMS server
 
 =head1 SYNOPSIS
 
   use DBI;
 
-  $dbh = DBI->connect("dbi:InterBase:db=$dbname", $user, $password);
+  $dbh = DBI->connect("dbi:Firebird:db=$dbname", $user, $password);
 
   # See the DBI module documentation for full details
 
 =head1 DESCRIPTION
 
-DBD::InterBase is a Perl module which works with the DBI module to provide
-access to Firebird and InterBase databases.
+DBD::Firebird is a Perl module which works with the DBI module to provide
+access to Firebird databases.
 
 =head1 MODULE DOCUMENTATION
 
@@ -288,12 +288,12 @@ case consult the DBI documentation first !
 To connect to a database with a minimum of parameters, use the 
 following syntax: 
 
-  $dbh = DBI->connect("dbi:InterBase:dbname=$dbname", $user, $password);
+  $dbh = DBI->connect("dbi:Firebird:dbname=$dbname", $user, $password);
 
 If omitted, C<$user> defaults to the ISC_USER environment variable
 (or, failing that, the DBI-standard DBI_USER environment variable).
 Similarly, C<$password> defaults to ISC_PASSWORD (or DBI_PASS).  If
-C<$dbname> is blank, that is, I<"dbi:InterBase:dbname=">, the
+C<$dbname> is blank, that is, I<"dbi:Firebird:dbname=">, the
 environment variable ISC_DATABASE is substituted.
 
 The DSN may take several optional parameters, which may be split
@@ -301,7 +301,7 @@ over multiple lines.  Here is an example of connect statement which
 uses all possible parameters: 
 
    $dsn =<< "DSN";
- dbi:InterBase:dbname=$dbname;
+ dbi:Firebird:dbname=$dbname;
  host=$host;
  port=$port;
  ib_dialect=$dialect;
@@ -312,7 +312,7 @@ uses all possible parameters:
 
  $dbh =  DBI->connect($dsn, $username, $password);
 
-The C<$dsn> is prefixed by 'dbi:InterBase:', and consists of key-value
+The C<$dsn> is prefixed by 'dbi:Firebird:', and consists of key-value
 parameters separated by B<semicolons>. New line may be added after the
 semicolon. The following is the list of valid parameters and their
 respective meanings:
@@ -335,39 +335,39 @@ B<database> could be used interchangebly with B<dbname> and B<db>.
 To connect to a remote host, use the B<host> parameter. 
 Here is an example of DSN to connect to a remote Windows host:
 
- $dsn = "dbi:InterBase:db=C:/temp/test.gdb;host=rae.cumi.org;ib_dialect=3";
+ $dsn = "dbi:Firebird:db=C:/temp/test.gdb;host=rae.cumi.org;ib_dialect=3";
 
 Database file alias introduced in Firebird 1.5 can be used too. In the following 
 example, "billing" is defined in aliases.conf:
 
- $dsn = 'dbi:InterBase:hostname=192.168.88.5;db=billing;ib_dialect=3';
+ $dsn = 'dbi:Firebird:hostname=192.168.88.5;db=billing;ib_dialect=3';
  
 Firebird as of version 1.0 listens on port specified within the services
 file. To connect to port other than the default 3050, add the port number at
 the end of host name, separated by a slash. Example:
 
- $dsn = 'dbi:InterBase:db=/data/test.gdb;host=localhost/3060';
+ $dsn = 'dbi:Firebird:db=/data/test.gdb;host=localhost/3060';
 
-InterBase 6.0 introduces B<SQL dialect> to provide backward compatibility with
-databases created by older versions of InterBase. In short, SQL dialect
-controls how InterBase interprets:
+Firebird 1.0 introduces B<SQL dialect> to provide backward compatibility with
+databases created by older versions of Firebird. In short, SQL dialect
+controls how Firebird interprets:
 
  - double quotes
  - the DATE datatype
  - decimal and numeric datatypes
- - new 6.0 reserved keywords
+ - new 1.0 reserved keywords
 
 Valid values for B<ib_dialect> are 1, 2, and 3. The driver's default value is
 1. 
 
 B<ib_role> specifies the role of the connecting user. B<SQL role> is
-implemented by InterBase to make database administration easier when dealing
+implemented by Firebird to make database administration easier when dealing
 with lots of users. A detailed reading can be found at:
 
- http://www.ibphoenix.com/ibp_sqlroles.html
+ http://www.ibphoenix.com/resources/documents/general/doc_59
 
 If B<ib_cache> is not specified, the default database's cache size value will be 
-used. The InterBase Operation Guide discusses in full length the importance of 
+used. The Firebird Operation Guide discusses in full length the importance of 
 this parameter to gain the best performance.
 
 =item B<available_drivers>
@@ -590,7 +590,7 @@ are ignored.
 
   $sth = $dbh->table_info;
 
-All Interbase/Firebird versions support the basic DBI-specified columns
+All Firebird versions support the basic DBI-specified columns
 (TABLE_NAME, TABLE_TYPE, etc.) as well as C<IB_TABLE_OWNER>.  Peculiar
 versions may return additional fields, prefixed by C<IB_>.
 
@@ -604,10 +604,10 @@ SQL C<LIKE> predicate, which is sensitive to blanks.  That is:
   $dbh->table_info('', '', 'FOO%'); # Will always find "FOO", but also tables
                                     # "FOOD", "FOOT", etc.
 
-Future versions of DBD::InterBase may attempt to work around this irritating
+Future versions of DBD::Firebird may attempt to work around this irritating
 limitation, at the expense of efficiency.
 
-Note that Interbase/Firebird implementations do not presently support the DBI
+Note that Firebird implementations do not presently support the DBI
 concepts of 'catalog' and 'schema', so these parameters are effectively
 ignored.
 
@@ -623,8 +623,8 @@ Returns a list of tables, excluding any 'SYSTEM TABLE' types.
 
 Supported by the driver as proposed by DBI. 
 
-For further details concerning the InterBase specific data-types 
-please read the L<InterBase Data Definition Guide>. 
+For further details concerning the Firebird specific data-types 
+please read the L<Firebird Data Definition Guide>. 
 
 =item B<type_info>
 
@@ -647,7 +647,7 @@ Implemented by DBI, no driver-specific impact.
 =item B<AutoCommit>  (boolean)
 
 Supported by the driver as proposed by DBI. According to the 
-classification of DBI, InterBase is a database, in which a 
+classification of DBI, Firebird is a database, in which a 
 transaction must be explicitly started. Without starting a 
 transaction, every change to the database becomes immediately 
 permanent. The default of AutoCommit is on, which corresponds 
@@ -670,7 +670,7 @@ Implemented by DBI, not used by the driver.
 
 =item B<ib_softcommit>  (driver-specific, boolean)
 
-Set this attribute to TRUE to use InterBase's soft commit feature (default
+Set this attribute to TRUE to use Firebird's soft commit feature (default
 to FALSE). Soft commit retains the internal transaction handle when
 committing a transaction, while the default commit behavior always closes
 and invalidates the transaction handle.
@@ -790,7 +790,7 @@ Implemented by DBI, no driver-specific impact.
 =item B<TYPE>  (array-ref, read-only)
 
 Supported by the driver as proposed by DBI, with 
-the restriction, that the types are InterBase
+the restriction, that the types are Firebird
 specific data-types which do not correspond to 
 international standards.
 
@@ -833,7 +833,7 @@ If AutoCommit is switched-off, immediately a transaction will be started.
 A rollback() will rollback and close the active transaction, then implicitly 
 start a new transaction. A disconnect will issue a rollback. 
 
-InterBase provides fine control over transaction behavior, where users can
+Firebird provides fine control over transaction behavior, where users can
 specify the access mode, the isolation level, the lock resolution, and the 
 table reservation (for a specified table). For this purpose,
 C<ib_set_tx_param()> database handle method is available. 
@@ -880,7 +880,7 @@ C<no_record_version>, then they should be inside an anonymous array:
     'ib_set_tx_param'
  );
 
-Table reservation is supported since C<DBD::InterBase 0.30>. Names of the
+Table reservation is supported since C<DBD::Firebird 0.30>. Names of the
 tables to reserve as well as their reservation params/values are specified
 inside a hashref, which is then passed as the value of C<-reserving>.
 
@@ -930,7 +930,7 @@ transaction parameters to the default value.
 
 =head1 DATE, TIME, and TIMESTAMP FORMATTING SUPPORT
 
-C<DBD::InterBase> supports various formats for query results of DATE, TIME,
+C<DBD::Firebird> supports various formats for query results of DATE, TIME,
 and TIMESTAMP types. 
 
 By default, it uses "%c" for TIMESTAMP, "%x" for DATE, and "%X" for TIME,
@@ -1104,14 +1104,14 @@ fetch() methods.
 
 =head1 COMPATIBILITY WITH DBIx::* MODULES 
 
-C<DBD::InterBase> is known to work with C<DBIx::Recordset> 0.21, and
+C<DBD::Firebird> is known to work with C<DBIx::Recordset> 0.21, and
 C<Apache::DBI> 0.87. Yuri Vasiliev <I<yuri.vasiliev@targuscom.com>> reported 
 successful usage with Apache::AuthDBI (part of C<Apache::DBI> 0.87 
 distribution).
 
 The driver is untested with C<Apache::Session::DBI>. Doesn't work with 
 C<Tie::DBI>. C<Tie::DBI> calls $dbh->prepare("LISTFIELDS $table_name") on 
-which InterBase fails to parse. I think that the call should be made within 
+which Firebird fails to parse. I think that the call should be made within 
 an eval block.
 
 =head1 FAQ
@@ -1194,7 +1194,7 @@ clause, such as this:
 
  SELECT * FROM $table WHERE UPPER(author) LIKE UPPER(? COLLATE FR_CA);
 
-This deals with the InterBase's SQL parser, not with C<DBD::InterBase>. The
+This deals with the Firebird's SQL parser, not with C<DBD::Firebird>. The
 driver just passes SQL statements through the engine.
 
 
@@ -1221,7 +1221,7 @@ records as the result of a query. This is particularly efficient and useful
 for paging feature on web pages, where users can navigate back and forth 
 between pages. 
 
-Using InterBase (Firebird is explained later), this can be emulated by writing a
+Using Firebird (Firebird is explained later), this can be emulated by writing a
 stored procedure. For example, to display a portion of table_forum, first create 
 the following procedure:
 
@@ -1336,9 +1336,9 @@ C<set_tx_param()> is obsoleted by C<ib_set_tx_param()>.
 
 =over 4
 
-=item InterBase 6.0/6.01 SS and Classic for Linux
+=item Firebird 6.0/6.01 SS and Classic for Linux
 
-=item InterBase 6.0/6.01 for Windows, FreeBSD, SPARC Solaris
+=item Firebird 6.0/6.01 for Windows, FreeBSD, SPARC Solaris
 
 =item FirebirdSS 1.0 Final for Windows, Linux, SPARC Solaris
 
@@ -1356,7 +1356,7 @@ work with Intel EM64T.
 
 =item * DBI by Tim Bunce <Tim.Bunce@pobox.com>
 
-=item * DBD::InterBase by Edwin Pratomo <edpratomo@cpan.org> and Daniel Ritz 
+=item * DBD::Firebird by Edwin Pratomo <edpratomo@cpan.org> and Daniel Ritz 
 <daniel.ritz@gmx.ch>.
 
 This module is originally based on the work of Bill Karwin's IBPerl.
@@ -1366,7 +1366,7 @@ This module is originally based on the work of Bill Karwin's IBPerl.
 =head1 BUGS/LIMITATIONS
 
 Please report bugs and feature suggestions using 
-http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-InterBase.
+http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Firebird.
 
 This module doesn't work with MSWin32 ActivePerl iThreads, and its emulated
 fork. Tested with MSWin32 ActivePerl build 809 (Perl 5.8.3). The whole
@@ -1400,10 +1400,10 @@ DBI(3).
 
 =head1 COPYRIGHT
 
-The DBD::InterBase module is Copyright (c) 1999-2008 Edwin Pratomo.
+The DBD::Firebird module is Copyright (c) 1999-2008 Edwin Pratomo.
 Portions Copyright (c) 2001-2005 Daniel Ritz.
 
-The DBD::InterBase module is free software. 
+The DBD::Firebird module is free software. 
 You may distribute under the terms of either the GNU General Public
 License or the Artistic License, as specified in the Perl README file.
 

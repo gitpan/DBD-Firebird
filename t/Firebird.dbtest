@@ -1,4 +1,4 @@
-# database specific definitions for a 'InterBase' database
+# database specific definitions for a 'Firebird' database
 
 for (qw[test.conf t/test.conf]) {
 	if (-r $_) {

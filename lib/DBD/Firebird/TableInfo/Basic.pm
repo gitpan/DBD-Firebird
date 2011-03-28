@@ -1,18 +1,18 @@
-package DBD::InterBase::TableInfo::Basic;
+package DBD::Firebird::TableInfo::Basic;
 use strict;
 
 =pod
 
 =head1 NAME
 
-DBD::InterBase::TableInfo::Basic - A base class for lowest-common denominator Interbase table_info() querying.
+DBD::Firebird::TableInfo::Basic - A base class for lowest-common denominator Interbase table_info() querying.
 
 =head1 SYNOPSIS
 
     # Add support for a hypothetical IB derivative
-    package DBD::InterBase::TableInfo::HypotheticalIBDerivative
+    package DBD::Firebird::TableInfo::HypotheticalIBDerivative
 
-    @ISA = qw(DBD::InterBase::TableInfo::Basic);
+    @ISA = qw(DBD::Firebird::TableInfo::Basic);
 
     # What table types are supported?
     sub supported_types {
@@ -56,7 +56,7 @@ C<$table> pattern means "any table," and an empty C<@types> list means "any
 type."
 
 C<@types> is a list of user-supplied, requested types.
-C<DBD::InterBase::db::table_info> will normalize the user-supplied types,
+C<DBD::Firebird::db::table_info> will normalize the user-supplied types,
 stripping quote marks, uppercasing, and removing duplicates.
 
 =item I<list_types>

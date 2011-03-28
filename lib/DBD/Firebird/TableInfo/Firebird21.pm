@@ -1,10 +1,10 @@
 use strict;
 
-package DBD::InterBase::TableInfo::Firebird21;
+package DBD::Firebird::TableInfo::Firebird21;
 
-use DBD::InterBase::TableInfo::Basic;
+use DBD::Firebird::TableInfo::Basic;
 use vars qw(@ISA);
-@ISA = qw(DBD::InterBase::TableInfo::Basic);
+@ISA = qw(DBD::Firebird::TableInfo::Basic);
 
 my %FbTableTypes = (
     'SYSTEM TABLE' => '((rdb$system_flag = 1) AND rdb$view_blr IS NULL)',
