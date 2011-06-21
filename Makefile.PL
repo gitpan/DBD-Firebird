@@ -19,7 +19,7 @@
 # added support for ActivePerl! :)
 
 BEGIN { $^W = 0 }       # turn warnings off
-BEGIN { require 5.008_001;} # 5.008 is required by latest dbi version 
+BEGIN { require 5.008_001;} # 5.008 is required by latest dbi version
 
 use ExtUtils::MakeMaker 5.16, qw(prompt &WriteMakefile $Verbose);
 use Config;
@@ -90,7 +90,7 @@ else
 {
     $isql_name = 'isql';
     @ib_bin_dirs = (qw(/opt/firebird/bin /usr/bin /usr/local/bin));
-    @ib_inc_dirs = (qw(/opt/firebird/include /usr/include));
+    @ib_inc_dirs = (qw(/opt/firebird/include /usr/include /usr/include/firebird));
 }
 
 sub locate_dbi_arch_dir {
@@ -380,15 +380,24 @@ my %MakeParams = (
     'dist'          => {COMPRESS=>'gzip -9f', SUFFIX=>'gz'},
     'clean'         => {FILES => "*.xsi *.old t/*.old *~ t/*~ trace.txt t/trace.txt lib/DBD/Firebird/*~ lib/DBD/Firebird/*.old lib/Bundle/DBD/*~ lib/Bundle/DBD/*.old"},
     'realclean'     => {FILES => "t/test.conf"},
+    'AUTHOR'        => 'Edwin Pratomo (edpratomo@users.sourceforge.net)',
+    'ABSTRACT'      => 'DBD::Firebird is a DBI driver for Firebird , written using Firebird C API.',
+    'PREREQ_PM'     => {DBI => 1.41},
+    'CONFIGURE_REQUIRES' => {DBI => 1.41},
+    'BUILD_REQUIRES' => {'Test::More'=> 0.4 },
+    LICENSE => 'perl',
+    MIN_PERL_VERSION => '5.008001',
+    META_MERGE => {
+        resources => {
+            repository => 'https://github.com/mariuz/perl-dbd-firebird',
+        },
+    },
 );
 
 # the OS specific build environment setup
 my $os = $Config::Config{'osname'};
 if ($os eq 'MSWin32')
 {
-    # set up PPM package parameters
-    $MakeParams{'AUTHOR'}   = 'Edwin Pratomo (edpratomo@users.sourceforge.net)';
-    $MakeParams{'ABSTRACT'} = 'DBD::Firebird is a DBI driver for Firebird , written using Firebird C API.';
 
     my $vc_dir = '';
     if ($Config::Config{'cc'} eq "cl")
@@ -531,7 +540,7 @@ elsif (($os eq 'linux') || ($os eq 'freebsd'))
 
     my $ldl = ($os eq 'linux') ? '-ldl' : '';
 
-    $MakeParams{'LIBS'} = "-L$ib_lib -l$lib $ldl ";
+    $MakeParams{'LIBS'} = "-L$ib_lib -L/usr/lib -l$lib $ldl ";
 
 }
 elsif ($os eq 'hpux')
@@ -572,7 +581,34 @@ else
 make_test_conf();
 
 # and last but not least write the makefile
-WriteMakefile(%MakeParams);
+WriteMakefile1(%MakeParams);
+
+sub WriteMakefile1 {  #Written by Alexandr Ciornii, version 0.23. Added by eumm-upgrade.
+    my %params=@_;
+    my $eumm_version=$ExtUtils::MakeMaker::VERSION;
+    $eumm_version=eval $eumm_version;
+    die "EXTRA_META is deprecated" if exists $params{EXTRA_META};
+    die "License not specified" if not exists $params{LICENSE};
+    if ($params{AUTHOR} and ref($params{AUTHOR}) eq 'ARRAY' and $eumm_version < 6.5705) {
+        $params{META_ADD}->{author}=$params{AUTHOR};
+        $params{AUTHOR}=join(', ',@{$params{AUTHOR}});
+    }
+    if ($params{BUILD_REQUIRES} and $eumm_version < 6.5503) {
+        #EUMM 6.5502 has problems with BUILD_REQUIRES
+        $params{PREREQ_PM}={ %{$params{PREREQ_PM} || {}} , %{$params{BUILD_REQUIRES}} };
+        delete $params{BUILD_REQUIRES};
+    }
+    delete $params{CONFIGURE_REQUIRES} if $eumm_version < 6.52;
+    delete $params{MIN_PERL_VERSION} if $eumm_version < 6.48;
+    delete $params{META_MERGE} if $eumm_version < 6.46;
+    delete $params{META_ADD} if $eumm_version < 6.46;
+    delete $params{LICENSE} if $eumm_version < 6.31;
+    delete $params{AUTHOR} if $] < 5.005;
+    delete $params{ABSTRACT_FROM} if $] < 5.005;
+    delete $params{BINARY_LOCATION} if $] < 5.005;
+
+    WriteMakefile(%params);
+}
 
 sub MY::postamble
 {
@@ -582,6 +618,8 @@ sub MY::postamble
 package main;
 
 # the data used to create the database creation script
+
+
 __DATA__
 CREATE DATABASE "__TESTDB__" user "__USER__" password "__PASS__";
 
