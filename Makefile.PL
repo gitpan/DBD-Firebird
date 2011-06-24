@@ -50,7 +50,9 @@ my $ib_lib_dir = '';
 ################################################################################
 # OS specific configuration
 ################################################################################
-if ($Config::Config{osname} eq 'MSWin32')
+my $os = $Config::Config{'osname'};
+
+if ($os eq 'MSWin32')
 {
     $isql_name = 'isql.exe';
 
@@ -85,6 +87,12 @@ if ($Config::Config{osname} eq 'MSWin32')
 
     @ib_bin_dirs = ($ib_bin_dir);
     @ib_inc_dirs = ($ib_lib_dir . "SDK\\include", $ib_lib_dir . "include");
+}
+elsif ($os eq 'darwin')
+{
+    $isql_name = 'isql';
+    @ib_bin_dirs = (qw(/Library/Frameworks/Firebird.framework/Resources/bin));
+    @ib_inc_dirs = (qw(/Library/Frameworks/Firebird.framework/Headers));
 }
 else
 {
@@ -235,7 +243,7 @@ sub make_test_conf
                 }
                 # Check for Firebird login errors
                 if ($line =~ /Firebird login/i) {
-                    print "!!! Check your Firebird login parameters !!!\n";
+                    print "Please Check your Firebird login parameters \n";
                     $path = undef, goto DBPATH; # should change this!
                 }
                 # Get dialect if got here
@@ -354,16 +362,8 @@ unless(-x $IB_Bin_path)
     exit 1;
 }
 
-# get Firebird version
-my $IBVERSION;
-my $GFIX_PATH = $IB_Bin_path . "/" . test_files($IB_Bin_path, [qw(gfix gfix.exe)]);
-chop($IBVERSION = `$GFIX_PATH -z 2>&1`);
-$IBVERSION =~ s/^gfix version //o;
-my $is_final = $IBVERSION =~ /\.6\d+$/ ? 1 : 0;
-
 # prompt for Firebird include dir
 my $ib_inc = dir_choice("Firebird include directory", [@ib_inc_dirs], [qw(gds.h ibase.h)]);
-
 
 # we use a hash for the MakeMaker parameters
 my %MakeParams = (
@@ -395,7 +395,7 @@ my %MakeParams = (
 );
 
 # the OS specific build environment setup
-my $os = $Config::Config{'osname'};
+
 if ($os eq 'MSWin32')
 {
 
@@ -542,6 +542,10 @@ elsif (($os eq 'linux') || ($os eq 'freebsd'))
 
     $MakeParams{'LIBS'} = "-L$ib_lib -L/usr/lib -l$lib $ldl ";
 
+}
+elsif ($os eq 'darwin')
+{
+    $MakeParams{'LDDLFLAGS'} = $Config{lddlflags} . " -framework Firebird ";
 }
 elsif ($os eq 'hpux')
 {
