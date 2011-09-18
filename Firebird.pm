@@ -1,5 +1,6 @@
 #   $Id: Firebird.pm 399 2008-01-08 08:51:35Z edpratomo $
 #
+#   Copyright (c) 2011  Marius Popa <mapopa@gmail.com>
 #   Copyright (c) 1999-2008 Edwin Pratomo
 #
 #   You may distribute under the terms of either the GNU General Public
@@ -17,7 +18,7 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '0.55';
+$VERSION = '0.60';
 
 bootstrap DBD::Firebird $VERSION;
 
@@ -357,8 +358,8 @@ controls how Firebird interprets:
  - decimal and numeric datatypes
  - new 1.0 reserved keywords
 
-Valid values for B<ib_dialect> are 1, 2, and 3. The driver's default value is
-1. 
+Valid values for B<ib_dialect> are 1 and 3 (there is also 2 but it's not recommended). The driver's default value is
+3 
 
 B<ib_role> specifies the role of the connecting user. B<SQL role> is
 implemented by Firebird to make database administration easier when dealing
