@@ -1,6 +1,5 @@
 #!/usr/local/bin/perl -w
 #
-#   $Id: 81event-fork.t 397 2008-01-08 05:58:49Z edpratomo $
 #
 
 use strict;
@@ -13,6 +12,8 @@ use Test::More;
 use lib 't','.';
 
 require 'tests-setup.pl';
+
+my $rc = read_cached_configs();
 
 my ($dbh, $error_str) = connect_to_database();
 
@@ -61,7 +62,7 @@ DDL
 # detect SIGNAL availability
 my $sig_ok = grep { /HUP$/ } split(/ /, $Config{sig_name});
 
-$dbh->{InactiveDestroy} = 1;
+$dbh->disconnect if $rc->{use_libfbembed};
 
 # try fork
 {
@@ -85,15 +86,17 @@ SKIP: {
             sub {
                 my $posted_events = shift;
                 while (my ($k, $v) = each %$posted_events) {
+                    #diag "Got event $k";
                     $::CNT{$k} += $v;
                 }
                 1;
             },
             'ib_register_callback'
-        ));
+        ), "Event callback registered");
 
         kill SIGHUP => $pid;
-        is(wait, $pid);
+        is(wait, $pid, "Kid finished");
+        BAIL_OUT("Kid exit status: $?") unless $? == 0;
         # then wait until foo_deleted gets posted
         while (not exists $::CNT{'foo_deleted'}) {}
         ok($dbh->func($evh, 'ib_cancel_callback'));
@@ -101,24 +104,37 @@ SKIP: {
         is($::CNT{'foo_inserted'}, 5, "compare number of inserts");
         is($::CNT{'foo_deleted'}, 5, "compare number of deleted rows");
     } else {
+        $dbh->{InactiveDestroy} = 1;
         $|++;
-        $SIG{HUP} = sub { diag("kid gets sighup\n"); $::SLEEP = 0 };
+        $SIG{HUP} = sub {
+            #diag("kid $$ gets sighup\n");
+            $::SLEEP = 0;
+        };
         $::SLEEP = 1;
         while ($::SLEEP) {}
 
+        #diag "Kid about to connect";
         my ($dbh, $error_str) = connect_to_database({AutoCommit => 1 });
+        if ($error_str) {
+            #diag "Kid connection error: $error_str";
+            die;
+        }
+        #diag "Kid connected";
         for (1..5) {
+            #diag "Kid about to insert";
             $dbh->do(qq{INSERT INTO $table VALUES($_, 'bar')});
-            sleep 1;
+            #diag "Inserted a row";
         }
         $dbh->do(qq{DELETE FROM $table});
-        #sleep 1;    # give some time for db to post event
+        #diag "Deleted all rows";
         $dbh->disconnect;
+        #diag "Kid exiting";
         exit;
     }
 }}
 
-$dbh->{InactiveDestroy} = 0;
+($dbh, $error_str) = connect_to_database() if $rc->{use_libfbembed};
+
 ok($dbh->do(qq(DROP TRIGGER ins_${table}_trig)));
 ok($dbh->do(qq(DROP TRIGGER del_${table}_trig)));
 ok($dbh->do(qq(DROP TABLE $table)), "DROP TABLE $table");

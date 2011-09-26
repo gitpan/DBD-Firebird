@@ -1,5 +1,4 @@
 /*
-   $Id: dbdimp.h 395 2008-01-08 05:33:11Z edpratomo $
 
    Copyright (c) 2011  Marius Popa <mapopa@gmail.com>
    Copyright (c) 2010  pilcrow <mjp@pilcrow.madison.wi.us>
@@ -214,6 +213,8 @@ struct imp_dbh_st
     unsigned short  tpb_length;         /* length of tpb_buffer */
     unsigned short  sqldialect;         /* default sql dialect */
     char            soft_commit;        /* use soft commit ? */
+    char            *ib_charset;
+    bool            ib_enable_utf8;
 
     unsigned int    sth_ddl;            /* number of open DDL statments */
     imp_sth_t       *first_sth;         /* pointer to first statement */
@@ -239,7 +240,7 @@ struct imp_sth_st
     char            *cursor_name;
     long            type;               /* statement type */
     char            count_item;
-    int             fetched;            /* number of fetched rows */
+    int             affected;           /* number of affected rows */
 
     char            *dateformat;
     char            *timestampformat;

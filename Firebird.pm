@@ -1,6 +1,6 @@
-#   $Id: Firebird.pm 399 2008-01-08 08:51:35Z edpratomo $
 #
 #   Copyright (c) 2011  Marius Popa <mapopa@gmail.com>
+#   Copyright (c) 2011  Damyan Ivanov <dmn@debian.org>
 #   Copyright (c) 1999-2008 Edwin Pratomo
 #
 #   You may distribute under the terms of either the GNU General Public
@@ -18,7 +18,7 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '0.60';
+$VERSION = '0.70';
 
 bootstrap DBD::Firebird $VERSION;
 
@@ -141,12 +141,13 @@ sub do
     if (@params) 
     {
         my $sth = $dbh->prepare($statement, $attr) or return undef;
-        $sth->execute(@params) or return undef;
+        defined($sth->execute(@params)) or return undef;
         $rows = $sth->rows;
     } 
     else 
     {
-        $rows = DBD::Firebird::db::_do($dbh, $statement, $attr) or return undef;
+        $rows = DBD::Firebird::db::_do($dbh, $statement, $attr);
+        return undef unless defined($rows);
     }
     ($rows == 0) ? "0E0" : $rows;
 }
@@ -336,13 +337,13 @@ B<database> could be used interchangebly with B<dbname> and B<db>.
 To connect to a remote host, use the B<host> parameter. 
 Here is an example of DSN to connect to a remote Windows host:
 
- $dsn = "dbi:Firebird:db=C:/temp/test.gdb;host=rae.cumi.org;ib_dialect=3";
+ $dsn = "dbi:Firebird:db=C:/temp/test.gdb;host=example.com;ib_dialect=3";
 
-Database file alias introduced in Firebird 1.5 can be used too. In the following 
+Database file alias can be used too in connection string. In the following 
 example, "billing" is defined in aliases.conf:
 
  $dsn = 'dbi:Firebird:hostname=192.168.88.5;db=billing;ib_dialect=3';
- 
+
 Firebird as of version 1.0 listens on port specified within the services
 file. To connect to port other than the default 3050, add the port number at
 the end of host name, separated by a slash. Example:
@@ -350,7 +351,7 @@ the end of host name, separated by a slash. Example:
  $dsn = 'dbi:Firebird:db=/data/test.gdb;host=localhost/3060';
 
 Firebird 1.0 introduces B<SQL dialect> to provide backward compatibility with
-databases created by older versions of Firebird. In short, SQL dialect
+databases created by older versions of Firebird (pre 1.0). In short, SQL dialect
 controls how Firebird interprets:
 
  - double quotes
@@ -358,8 +359,10 @@ controls how Firebird interprets:
  - decimal and numeric datatypes
  - new 1.0 reserved keywords
 
-Valid values for B<ib_dialect> are 1 and 3 (there is also 2 but it's not recommended). The driver's default value is
-3 
+Valid values for B<ib_dialect> are 1 and 3 .The driver's default value is
+3 (Currently it is possible to create databases in Dialect 1 and 3 only, however it is recommended that you use Dialect 3 exclusively, since Dialect 1 will eventually be deprecated. Dialect 2 cannot be used to create a database since it only serves to convert Dialect 1 to Dialect 3).
+
+http://www.firebirdsql.org/file/documentation/reference_manuals/user_manuals/html/isql-dialects.html 
 
 B<ib_role> specifies the role of the connecting user. B<SQL role> is
 implemented by Firebird to make database administration easier when dealing
@@ -601,7 +604,7 @@ in a blank-padded CHAR field, and a search for table name is performed via a
 SQL C<LIKE> predicate, which is sensitive to blanks.  That is:
 
   $dbh->table_info('', '', 'FOO');  # May not find table "FOO", depending on
-                                    # IB/FB version
+                                    # FB version
   $dbh->table_info('', '', 'FOO%'); # Will always find "FOO", but also tables
                                     # "FOOD", "FOOT", etc.
 
@@ -625,7 +628,9 @@ Returns a list of tables, excluding any 'SYSTEM TABLE' types.
 Supported by the driver as proposed by DBI. 
 
 For further details concerning the Firebird specific data-types 
-please read the L<Firebird Data Definition Guide>. 
+please read the Firebird Data Definition Guide 
+
+http://www.firebirdsql.org/en/reference-manuals/ 
 
 =item B<type_info>
 
@@ -682,6 +687,24 @@ desirable when dealing with nested statement handles under AutoCommit on.
 
 Switching the attribute's value from TRUE to FALSE will force hard commit thus 
 closing the current transaction. 
+
+=item B<ib_enable_utf8>  (driver-specific, boolean)
+
+Setting this attribute to TRUE will cause any Perl Unicode strings supplied as
+statement parameters to be downgraded to octet sequences before passing them to
+Firebird.
+
+Also, any character data retrieved from the database (CHAR, VARCHAR, BLOB
+sub_type TEXT) will be upgraded to Perl Unicode strings.
+
+B<Caveat>: Currently this is supported only if the B<ib_charset> DSN parameter
+is C<UTF8>. In the future, encoding and decoding to/from arbitrary character
+set may be implemented.
+
+Example:
+
+    $dbh = DBI->connect( 'dbi:Firebird:db=database.fdb;ib_charset=UTF8',
+        { ib_enable_utf8 => 1 } );
 
 =back
 
@@ -1201,19 +1224,20 @@ driver just passes SQL statements through the engine.
 
 =head2 How to do automatic increment for a specific field?
 
-Create a generator and a trigger to associate it with the field. The
-following example creates a generator named PROD_ID_GEN, and a trigger for
+Create a sequence and a trigger to associate it with the field. The
+following example creates a sequence named PROD_ID_SEQ, and a trigger for
 table ORDERS which uses the generator to perform auto increment on field
 PRODUCE_ID with increment size of 1.
 
- $dbh->do("CREATE GENERATOR PROD_ID_GEN");
+ $dbh->do("create sequence PROD_ID_SEQ");
  $dbh->do(
  "CREATE TRIGGER INC_PROD_ID FOR ORDERS
  BEFORE INSERT POSITION 0
  AS BEGIN
-   NEW.PRODUCE_ID = GEN_ID(PROD_ID_GEN, 1);
+   NEW.PRODUCE_ID = NEXT VALUE FOR PROD_ID_SEQ;
  END");
 
+From Firebird 3.0 there is Identity support 
 
 =head2 How can I perform LIMIT clause as I usually do in MySQL?
 
@@ -1222,50 +1246,17 @@ records as the result of a query. This is particularly efficient and useful
 for paging feature on web pages, where users can navigate back and forth 
 between pages. 
 
-Using Firebird (Firebird is explained later), this can be emulated by writing a
-stored procedure. For example, to display a portion of table_forum, first create 
-the following procedure:
+Using Firebird 2.5.x this can be implemented by using C<ROWS> .
 
- CREATE PROCEDURE PAGING_FORUM (start INTEGER, num INTEGER)
- RETURNS (id INTEGER, title VARCHAR(255), ctime DATE, author VARCHAR(255))
- AS 
- DECLARE VARIABLE counter INTEGER;
- BEGIN
-   counter = 0;
-   FOR SELECT id, title, ctime, author FROM table_forum ORDER BY ctime
-      INTO :id, :title, :ctime, :author
-   DO
-   BEGIN
-      IF (counter = :start + :num) THEN EXIT;
-      ELSE
-         IF (counter >= :start) THEN SUSPEND;
-      counter = counter + 1;          
-   END
- END !!
- SET TERM ; !!
+ http://www.firebirdsql.org/refdocs/langrefupd21-select.html#langrefupd21-select-rows
 
-And within your application:
+For example, to display a portion of table employee within your application:
 
  # fetch record 1 - 5:
- $res = $dbh->selectall_arrayref("SELECT * FROM paging_forum(0,5)");
+ $res = $dbh->selectall_arrayref("SELECT * FROM employee rows 1 to 5)");
 
  # fetch record 6 - 10: 
- $res = $dbh->selectall_arrayref("SELECT * FROM paging_forum(5,5)");
-
-But never expect this to work:
-
- $sth = $dbh->prepare(<<'SQL');
- EXECUTE PROCEDURE paging_forum(5,5) 
- RETURNING_VALUES :id, :title, :ctime, :author
- SQL
-
-With Firebird 1 RCx and later, you can use C<SELECT FIRST>:
-
- SELECT FIRST 10 SKIP 30 * FROM table_forum;
-
-C<FIRST x> and C<SKIP x> are both optional. C<FIRST> limits the number of
-rows to return, C<SKIP> ignores (skips) the first x rows in resultset. 
-
+ $res = $dbh->selectall_arrayref("SELECT * FROM employee rows 6 to 10)");
 
 =head2 How can I use the date/time formatting attributes?
 
@@ -1299,14 +1290,6 @@ No. If this is a problem to you, let me know, and probably I'll add this
 capability for the next release.
 
 
-=head2 Why do execute(), do() method and rows() method always return -1 upon 
-a successful operation?
-
-Incorrect question. $sth->rows returns the number of fetched rows after a
-successful SELECT. Starting from version 0.43, execute() method returns the
-number of affected rows. But it's true that do() method returns -1, this
-will change in future release.
-
 =head1 OBSOLETE FEATURES
 
 =over 
@@ -1337,17 +1320,9 @@ C<set_tx_param()> is obsoleted by C<ib_set_tx_param()>.
 
 =over 4
 
-=item Firebird 6.0/6.01 SS and Classic for Linux
+=item Firebird 2.5.x SS , SC and Classic for Linux (32 bits and 64)
 
-=item Firebird 6.0/6.01 for Windows, FreeBSD, SPARC Solaris
-
-=item FirebirdSS 1.0 Final for Windows, Linux, SPARC Solaris
-
-=item FirebirdSS 1.5.2.4731 for Windows, Linux
-
-=item FirebirdSS 2.0 RC4 for Linux. The AMD64 (64-bit) version is also tested. Should also 
-work with Intel EM64T. 
-
+=item Firebird 2.5.x for Windows, FreeBSD, SPARC Solaris
 
 =back
 
@@ -1367,7 +1342,7 @@ This module is originally based on the work of Bill Karwin's IBPerl.
 =head1 BUGS/LIMITATIONS
 
 Please report bugs and feature suggestions using 
-http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Firebird.
+http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Firebird .
 
 This module doesn't work with MSWin32 ActivePerl iThreads, and its emulated
 fork. Tested with MSWin32 ActivePerl build 809 (Perl 5.8.3). The whole
@@ -1399,10 +1374,25 @@ maximum size of a BLOB read/write is hardcoded to about 1 MB.
 
 DBI(3).
 
-=head1 COPYRIGHT
+=head1 COPYRIGHT & LICENSE
 
-The DBD::Firebird module is Copyright (c) 1999-2008 Edwin Pratomo.
-Portions Copyright (c) 2001-2005 Daniel Ritz.
+=over
+
+=item Copyright (c) 2010, 2011  Popa Adrian Marius <mapopa@gmail.com>
+
+=item Copyright (c) 2011  Stefan Suciu <stefbv70@gmail.com>
+
+=item Copyright (c) 2011  Damyan Ivanov <dmn@debian.org>
+
+=item Copyright (c) 2011  Alexandr Ciornii <alexchorny@gmail.com>
+
+=item Copyright (c) 2010, 2011  pilcrow <mjp@pilcrow.madison.wi.us>
+
+=item Copyright (c) 1999-2008  Edwin Pratomo
+
+=item Portions Copyright (c) 2001-2005  Daniel Ritz
+
+=back
 
 The DBD::Firebird module is free software. 
 You may distribute under the terms of either the GNU General Public
@@ -1413,7 +1403,7 @@ License or the Artistic License, as specified in the Perl README file.
 An attempt to enumerate all who have contributed patches (may misses some):
 Michael Moehle, Igor Klingen, Sergey Skvortsov, Ilya Verlinsky, Pavel
 Zheltouhov, Peter Wilkinson, Mark D. Anderson, Michael Samanov, Michael
-Arnett, Flemming Frandsen, Mike Shoyher, Christiaan Lademann.  
+Arnett, Flemming Frandsen, Mike Shoyher, Christiaan Lademann.
 
 
 =cut

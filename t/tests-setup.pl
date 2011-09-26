@@ -21,10 +21,22 @@ my $test_mark = 't/tests-setup.tmp.OK';
 
 use Test::More;
 
-unless ( $ENV{DBI_PASS} or $ENV{ISC_PASSWORD} ) {
+my $param = read_cached_configs();
+
+unless ( $param->{use_libfbembed} or $ENV{DBI_PASS} or $ENV{ISC_PASSWORD} ) {
     Test::More->import( skip_all =>
             "Neither DBI_PASS nor ISC_PASSWORD present in the environment" );
     exit 0;    # do not fail with CPAN testers
+}
+
+
+if ( $param->{use_libfbembed} ) {
+    # no interaction with anybody else
+    $ENV{FIREBIRD} = $ENV{FIREBIRD_LOCK} = '.';
+    delete $ENV{ISC_USER};
+    delete $ENV{ISC_PASSWORD};
+    delete $ENV{DBI_USER};
+    delete $ENV{DBI_PASS};
 }
 
 =head2 connect_to_database
@@ -101,15 +113,16 @@ sub check_and_set_cached_configs {
     my $error_str = q{};
 
     # Check user and pass, try the get from ENV if missing
-    $param->{user} = $param->{user} ? $param->{user} : get_user();
-    $param->{pass} = $param->{pass} ? $param->{pass} : get_pass();
+    $param->{user} = $param->{user} ? $param->{user} : get_user($param);
+    $param->{pass} = $param->{pass} ? $param->{pass} : get_pass($param);
 
     # Won't try to find isql here, just repport that it's missing
     $error_str .= ( -x $param->{isql} ) ? q{} : q{isql, };
 
     # The user can control the test database name and path using the
     # DBI_DSN environment var.  Other option is a default made up dsn
-    $param->{tdsn} = $param->{tdsn} ? check_dsn($param->{tdsn}) : get_dsn();
+    $param->{tdsn}
+        = $param->{tdsn} ? check_dsn( $param->{tdsn} ) : get_dsn($param);
     $error_str .= $param->{tdsn} ? q{} : q{wrong dsn,};
 
     # The database path
@@ -132,9 +145,21 @@ sub check_and_set_cached_configs {
     return $error_str;
 }
 
-sub get_user { return $ENV{DBI_USER} || $ENV{ISC_USER} || q{sysdba} }
+sub get_user {
+   my $param = shift;
 
-sub get_pass { return $ENV{DBI_PASS} || $ENV{ISC_PASSWORD} || q{masterkey} }
+   return if $param->{use_libfbembed};
+
+   return $ENV{DBI_USER} || $ENV{ISC_USER} || q{sysdba};
+}
+
+sub get_pass {
+   my $param = shift;
+
+   return if $param->{use_libfbembed};
+
+   return $ENV{DBI_PASS} || $ENV{ISC_PASSWORD} || q{masterkey};
+}
 
 =head2 check_dsn
 
@@ -168,9 +193,21 @@ Save the database path for L<isql>.
 
 sub get_dsn {
 
-    my $path = File::Spec->catfile(File::Spec->tmpdir(), 'dbd-fb-testdb.fdb');
+    my $param = shift;
 
-    return "dbi:Firebird:db=localhost:$path;ib_dialect=3;ib_charset=ISO8859_1";
+    my $path;
+
+    if ( $param->{use_libfbembed} ) {
+        $path = "dbd-fb-testdb.fdb";
+    }
+    else {
+        $path
+            = 'localhost:'
+            . File::Spec->catfile( File::Spec->tmpdir(),
+            'dbd-fb-testdb.fdb' );
+    }
+
+    return "dbi:Firebird:db=$path;ib_dialect=3;ib_charset=ISO8859_1";
 }
 
 =head2 get_path
@@ -291,8 +328,12 @@ sub save_configs {
         q(# Time: ) . $test_time,
         qq(tdsn:=$param->{tdsn}),
         qq(path:=$param->{path}),
-        qq(user:=$param->{user}),
-        qq(pass:=$param->{pass}),
+        $param->{use_libfbembed}
+            ? ()
+            : (
+                qq(user:=$param->{user}),
+                qq(pass:=$param->{pass}),
+            ),
         q(# This is a temporary file used for test setup #),
     );
     my $rec = join "\n", @record;
@@ -322,12 +363,10 @@ sub create_test_database {
 
     open my $t_fh, '>', './t/create.sql'
       or die qq{Can't write to t/create.sql};
-    while(<DATA>) {
-        s/__TESTDB__/$path/;
-        s/__USER__/$user/;
-        s/__PASS__/$pass/;
-        print {$t_fh} $_;
-    }
+    print $t_fh qq{create database "$path"};
+    print $t_fh qq{ user "$user" password "$pass"}
+        unless $param->{use_libfbembed};
+    print $t_fh ";\nquit;\n";
     close $t_fh;
 
     #-- Try to execute isql and create the test database
@@ -336,15 +375,15 @@ sub create_test_database {
     my $ocmd = qq("$isql" -sql_dialect 3 -i ./t/create.sql 2>&1);
     eval {
         # print "cmd is $ocmd\n";
-        open my $isql_fh, '-|', $ocmd;
+        open( my $isql_fh, '-|', $ocmd ) or die $!;
         while (<$isql_fh>) {
             # For debug:
-            # print "> $_\n";
+            print "> $_\n";
         }
         close $isql_fh;
     };
     if ($@) {
-        die "ISQL open error!\n";
+        die "ISQL open error: $@\n";
     }
     else {
         if ( -f $path ) {
@@ -379,7 +418,15 @@ sub check_database {
     my $dialect;
     my $database_ok = 1;
 
-    my $ocmd = qq("$isql" -u "$user" -p "$pass" -x "$path" 2>&1);
+    local $ENV{ISC_USER};
+    local $ENV{ISC_PASSWORD};
+
+    my $ocmd = qq("$isql" -x "$path" 2>&1);
+
+    unless ( $param->{use_libfbembed} ) {
+        $ENV{ISC_USER} = $user;
+        $ENV{ISC_PASSWORD} = $pass;
+    }
     # print "cmd: $ocmd\n";
     eval {
         open my $fh, '-|', $ocmd;
@@ -415,6 +462,7 @@ sub check_database {
 
     unless (defined $dialect) {
         print "No dialect?\n";
+        return;
     }
     else {
         print "Dialect is $dialect\n";
@@ -450,9 +498,3 @@ sub check_mark {
 
 1;
 
-#- The data used to create the database creation script
-
-__DATA__
-CREATE DATABASE "__TESTDB__" user "__USER__" password "__PASS__";
-
-quit;

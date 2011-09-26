@@ -1,9 +1,9 @@
 /* vim: set noai ts=4 et sw=4: */
 /*
-   $Id: dbdimp.c 395 2008-01-08 05:33:11Z edpratomo $
 
    Copyright (c) 2010, 2011  Popa Marius Adrian <mapopa@gmail.com>
    Copyright (c) 2011  Damyan Ivanov <dmn@debian.org>
+   Copyright (c) 2010  pilcrow <mjp@pilcrow.madison.wi.us>
    Copyright (c) 1999-2008  Edwin Pratomo
    Portions Copyright (c) 2001-2005  Daniel Ritz
 
@@ -59,6 +59,18 @@ int create_cursor_name(SV *sth, imp_sth_t *imp_sth)
         return TRUE;
 }
 
+void maybe_upgrade_to_utf8(imp_dbh_t *imp_dbh, SV *sv) {
+    if (imp_dbh->ib_enable_utf8) {
+        U8 *p;
+        STRLEN len;
+        p = (U8*)SvPV(sv, len);
+
+        if (!is_ascii_string(p, len)
+                && is_utf8_string(p, len)) {
+            SvUTF8_on(sv);
+        }
+    }
+}
 
 void dbd_init(dbistate_t *dbistate)
 {
@@ -254,7 +266,7 @@ int dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid,
     SV **svp;  /* versatile scalar storage */
 
     unsigned short ib_dialect, ib_cache;
-    char *ib_charset, *ib_role;
+    char *ib_role;
     char ISC_FAR *dpb_buffer, *dpb;
 
     char ISC_FAR *database;
@@ -271,6 +283,8 @@ int dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid,
     imp_dbh->sth_ddl    = 0;
 
     imp_dbh->soft_commit = 0; /* use soft commit (isc_commit_retaining)? */
+
+    imp_dbh->ib_enable_utf8 = FALSE;
 
     /* default date/time formats
        +     *
@@ -345,11 +359,16 @@ int dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid,
 
     if ((svp = hv_fetch(hv, "ib_charset", 10, FALSE)))
     {
-        ib_charset = SvPV(*svp, len);
+        char *p = SvPV(*svp, len);
         buflen += len + 2;
+
+        Newx(imp_dbh->ib_charset, len+1, char);
+        strncpy(imp_dbh->ib_charset, p, len+1);
+        *(imp_dbh->ib_charset + len) = '\0';
     }
-    else
-        ib_charset = NULL;
+    else {
+        imp_dbh->ib_charset = NULL;
+    }
 
     if ((svp = hv_fetch(hv, "ib_role", 7, FALSE)))
     {
@@ -407,10 +426,10 @@ int dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid,
         DPB_FILL_INTEGER(dpb, dbkey_scope);
     }
 
-    if (ib_charset)
+    if (imp_dbh->ib_charset)
     {
         DPB_FILL_BYTE(dpb, isc_dpb_lc_ctype);
-        DPB_FILL_STRING(dpb, ib_charset);
+        DPB_FILL_STRING(dpb, imp_dbh->ib_charset);
     }
 
     if (ib_role)
@@ -500,6 +519,7 @@ int dbd_db_disconnect(SV *dbh, imp_dbh_t *imp_dbh)
         imp_dbh->tr = 0L;
     }
 
+    FREE_SETNULL(imp_dbh->ib_charset);
     FREE_SETNULL(imp_dbh->tpb_buffer);
     FREE_SETNULL(imp_dbh->dateformat);
     FREE_SETNULL(imp_dbh->timeformat);
@@ -617,6 +637,19 @@ int dbd_db_STORE_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv, SV *valuesv)
         }
         return TRUE; /* handled */
     }
+    else if ((kl==14) && strEQ(key, "ib_enable_utf8")) {
+        if (on) {
+            if (imp_dbh->ib_charset && strEQ(imp_dbh->ib_charset, "UTF8")) {
+                imp_dbh->ib_enable_utf8 = TRUE;
+                return TRUE;
+            }
+            else croak( "ib_enable_utf8 requires ib_charset=UTF8 in DSN (you gave %s)", imp_dbh->ib_charset ? imp_dbh->ib_charset : "<nothing>" );
+        }
+        else {
+            imp_dbh->ib_enable_utf8 = FALSE;
+            return TRUE;
+        }
+    }
     else if ((kl==11) && strEQ(key, "ib_time_all"))
         set_frmts = 1;
 
@@ -655,6 +688,8 @@ SV *dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
         result = boolSV(DBIc_has(imp_dbh, DBIcf_AutoCommit));
     else if ((kl==13) && strEQ(key, "ib_softcommit"))
         result = boolSV(imp_dbh->soft_commit);
+    else if ((kl==14) && strEQ(key, "ib_enable_utf8"))
+        result = boolSV(imp_dbh->ib_enable_utf8);
     else if ((kl==13) && strEQ(key, "ib_dateformat"))
         result = newSVpvn(imp_dbh->dateformat, strlen(imp_dbh->dateformat));
     else if ((kl==13) && strEQ(key, "ib_timeformat"))
@@ -738,9 +773,8 @@ int dbd_st_prepare(SV *sth, imp_sth_t *imp_sth, char *statement, SV *attribs)
 
     /* init values */
     count_item = 0;
-
     imp_sth->count_item  = 0;
-    imp_sth->fetched     = -1;
+    imp_sth->affected    = -1;
     imp_sth->in_sqlda    = NULL;
     imp_sth->out_sqlda   = NULL;
     imp_sth->cursor_name = NULL;
@@ -1018,7 +1052,7 @@ int dbd_st_execute(SV *sth, imp_sth_t *imp_sth)
 
         DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_execute: isc_dsql_execute2 succeed.\n"));
 
-        imp_sth->fetched = 0;
+        result = row_count = imp_sth->affected = 0;
     }
     else /* all other types of SQL statements */
     {
@@ -1045,6 +1079,20 @@ int dbd_st_execute(SV *sth, imp_sth_t *imp_sth)
 
         DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_execute: isc_dsql_execute succeed.\n"));
     }
+
+    if (imp_sth->count_item)
+    {
+        //PerlIO_printf(PerlIO_stderr(), "calculating row count\n");
+        row_count = ib_rows(sth, &(imp_sth->stmt), imp_sth->count_item);
+        if (row_count <= -2)
+            ib_cleanup_st_execute(imp_sth);
+        else
+            result = imp_sth->affected = row_count;
+    }
+    else if (imp_sth->type == isc_info_sql_stmt_select)
+        result = row_count = imp_sth->affected = 0;
+    else
+        result = -1;
 
     /* Jika AutoCommit On, commit_transaction() (bukan retaining),
      * dan reset imp_dbh->tr == 0L
@@ -1089,17 +1137,6 @@ int dbd_st_execute(SV *sth, imp_sth_t *imp_sth)
             DBIc_ACTIVE_on(imp_sth);
             break;
     }
-
-    if (imp_sth->count_item)
-    {
-        //PerlIO_printf(PerlIO_stderr(), "calculating row count\n");
-        row_count = ib_rows(sth, &(imp_sth->stmt), imp_sth->count_item);
-        if (row_count <= -2)
-            ib_cleanup_st_execute(imp_sth);
-        else
-            result = row_count;
-    } else 
-        result = -1;
 
     DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_execute: row count: %d.\n"
                             "dbd_st_execute: count_item: %d.\n",
@@ -1154,8 +1191,8 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
 
         DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_fetch: fetch result: %"PRIdPTR"\n", fetch));
 
-        if (imp_sth->fetched < 0)
-            imp_sth->fetched = 0;
+        if (imp_sth->affected < 0)
+            imp_sth->affected = 0;
 
         if (fetch == 100)
         {
@@ -1189,7 +1226,7 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
     else
     {
         /* we only fetch one row for exec procedure */
-        if (imp_sth->fetched)
+        if (imp_sth->affected)
             return Nullav;
     }
 
@@ -1344,6 +1381,7 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
                     }
                     else
                         sv_setpvn(sv, var->sqldata, var->sqllen);
+                    maybe_upgrade_to_utf8(imp_dbh, sv);
                     break;
 
                 case SQL_VARYING:
@@ -1351,6 +1389,7 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
                     DBD_VARY *vary = (DBD_VARY *) var->sqldata;
                     sv_setpvn(sv, vary->vary_string, vary->vary_length);
                     /* Note that sqllen for VARCHARs is the max length */
+                    maybe_upgrade_to_utf8(imp_dbh, sv);
                     break;
                 }
 
@@ -1490,11 +1529,13 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
                          blob_segment_buffer[BLOB_SEGMENT];
                     char blob_info_items[] =
                     {
+                        isc_info_blob_type,
                         isc_info_blob_max_segment,
                         isc_info_blob_total_length
                     };
                     long max_segment = -1L, total_length = -1L, t;
                     unsigned short seg_length;
+                    unsigned short blob_type = -1;
 
                     /* Open the Blob according to the Blob id. */
                     isc_open_blob2(status, &(imp_dbh->db), &(imp_dbh->tr),
@@ -1537,18 +1578,23 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
                           case isc_info_blob_total_length:
                               total_length = isc_vax_integer(p, length);
                               break;
+                          case isc_info_blob_type:
+                              blob_type = isc_vax_integer(p, length);
+                              break;
+                          default:
+                              croak("Unknown parameter %d", (int)datum);
                         }
                         p += length;
                     }
 
                     DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth),
-                                  "dbd_st_fetch: BLOB info - max_segment: %ld, total_length: %ld\n",
-                                  max_segment, total_length));
+                                  "dbd_st_fetch: BLOB info - max_segment: %ld, total_length: %ld, type: %d\n",
+                                  max_segment, total_length, blob_type));
 
-                    if (max_segment == -1L || total_length == -1L)
+                    if (max_segment == -1L || total_length == -1L || blob_type == -1)
                     {
                         isc_cancel_blob(status, &blob_handle);
-                        do_error(sth, 1, "Cannot determine Blob dimensions.");
+                        do_error(sth, 1, "Cannot determine Blob dimensions or type.");
                         return FALSE;
                         break;
                     }
@@ -1632,6 +1678,10 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
                     if (ib_error_check(sth, status))
                         return FALSE;
 
+                    if ( blob_type == isc_blob_text
+                            || var->sqlsubtype == isc_blob_text )
+                        maybe_upgrade_to_utf8(imp_dbh, sv);
+
                     break;
                 }
 
@@ -1670,7 +1720,7 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
 */
         }
     }
-    imp_sth->fetched += 1;
+    imp_sth->affected += 1;
     return av;
 }
 
@@ -1955,9 +2005,11 @@ int ib_blob_write(SV *sth, imp_sth_t *imp_sth, XSQLVAR *var, SV *value)
     D_imp_dbh_from_sth;
     isc_blob_handle handle = 0;
     ISC_STATUS      status[ISC_STATUS_LENGTH];
-    long            total_length;
-    char            *p, *seg;
+    STRLEN          total_length;
+    char            *p, *seg, *string;
     int             is_text_blob, seg_len;
+    bool            is_utf8;
+    U8              *encoded;
 
     DBI_TRACE_imp_xxh(imp_sth, 2, (DBIc_LOGPIO(imp_sth), "ib_blob_write\n"));
 
@@ -1976,15 +2028,19 @@ int ib_blob_write(SV *sth, imp_sth_t *imp_sth, XSQLVAR *var, SV *value)
     if (ib_error_check(sth, status))
         return FALSE;
 
+    is_text_blob = (var->sqlsubtype == isc_bpb_type_stream)? 1: 0; /* SUBTYPE TEXT */
 
     /* get length, pointer to data */
-    total_length = SvCUR(value);
-    p = SvPV_nolen(value);
-
-    is_text_blob = (var->sqlsubtype == isc_bpb_type_stream)? 1: 0; /* SUBTYPE TEXT */
+    string = SvPV(value, total_length);
+    if (is_text_blob && imp_dbh->ib_enable_utf8) {
+        is_utf8 = SvUTF8(value);
+        encoded = bytes_from_utf8((U8*)string, &total_length, &is_utf8);
+    }
+    else encoded = (U8*)string;
 
     /* write it segment by segment */
     seg_len = BLOB_SEGMENT;
+    p = string;
     while (total_length > 0)
     {
         DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "ib_blob_write: %ld bytes left\n", total_length));
@@ -2018,6 +2074,8 @@ int ib_blob_write(SV *sth, imp_sth_t *imp_sth, XSQLVAR *var, SV *value)
         isc_put_segment(status, &handle, (unsigned short) seg_len, seg);
         if (ib_error_check(sth, status))
         {
+            if (encoded != (U8*)string)
+                Safefree(encoded);
             isc_cancel_blob(status, &handle);
             return FALSE;
         }
@@ -2025,6 +2083,9 @@ int ib_blob_write(SV *sth, imp_sth_t *imp_sth, XSQLVAR *var, SV *value)
         DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "ib_blob_write: %d bytes written\n", seg_len));
 
     }
+
+    if (encoded != (U8*)string)
+        Safefree(encoded);
 
     /* close blob, check for error */
     isc_close_blob(status, &handle);
@@ -2039,6 +2100,7 @@ int ib_blob_write(SV *sth, imp_sth_t *imp_sth, XSQLVAR *var, SV *value)
 static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
                           IV sql_type)
 {
+    D_imp_dbh_from_sth;
     STRLEN     len;
     XSQLVAR    *ivar;
     int        retval;
@@ -2125,8 +2187,18 @@ static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
         {
             char *string;
             STRLEN len;
+            bool is_utf8;
+            U8 *encoded;
 
             string = SvPV(value, len);
+
+            if (imp_dbh->ib_enable_utf8) {
+                is_utf8 = SvUTF8(value);
+                encoded = bytes_from_utf8((U8*)string, &len, &is_utf8);
+                /* either returns string (nothing changed, plain ASCII)
+                   or returns a new pointer to encoded octets */
+            }
+            else encoded = (U8*)string;
 
             if (len > ivar->sqllen) {
                 char err[80];
@@ -2139,7 +2211,9 @@ static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
                 Newxz(ivar->sqldata, ivar->sqllen + sizeof(short), char);
 
             *((short *)ivar->sqldata) = len;
-            Copy(string, ivar->sqldata + sizeof(short), len, char);
+            Copy((char*)encoded, ivar->sqldata + sizeof(short), len, char);
+            if (encoded != (U8*)string)
+                Safefree(encoded);
             break;
         }
         /**********************************************************************/
@@ -2148,8 +2222,18 @@ static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
         {
             char *string;
             STRLEN len;
+            bool is_utf8;
+            U8 *encoded;
 
             string = SvPV(value, len);
+
+            if (imp_dbh->ib_enable_utf8) {
+                is_utf8 = SvUTF8(value);
+                encoded = bytes_from_utf8((U8*)string, &len, &is_utf8);
+                /* either returns string (nothing changed, plain ASCII)
+                   or returns a new pointer to encoded octets */
+            }
+            else encoded = (U8*)string;
 
             if (len > ivar->sqllen) {
                 char err[80];
@@ -2163,7 +2247,9 @@ static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
 
             /* Pad the entire field with blanks */
             PoisonWith(ivar->sqldata, ivar->sqllen, char, ' ');
-            Copy(string, ivar->sqldata, len, char);
+            Copy((char*)encoded, ivar->sqldata, len, char);
+            if (encoded != (U8*)string)
+                Safefree(encoded);
             break;
         }
 
@@ -2749,16 +2835,13 @@ int dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field,
 int dbd_st_rows(SV* sth, imp_sth_t* imp_sth)
 {
     /* spot common mistake of checking $h->rows just after ->execut
-        if (imp_sth->fetched < 0
+        if (imp_sth->affected < 0
         && DBIc_WARN(imp_sth)
         ) {
         warn("$h->rows count is incomplete before all rows fetched.\n");
         }
     */
-    if (imp_sth->type == isc_info_sql_stmt_select)
-        return imp_sth->fetched;
-    else
-        return -1; /* unknown */
+    return imp_sth->affected;
 }
 
 long ib_rows(SV *xxh, isc_stmt_handle *h_stmt, char count_type)
@@ -2768,7 +2851,7 @@ long ib_rows(SV *xxh, isc_stmt_handle *h_stmt, char count_type)
     char count_is;
     char count_info[1], count_buffer[33];
     char *p;
-    long row_count = 0;
+    long row_count = -1;
 
     count_info[0] = isc_info_sql_records;
     if (isc_dsql_sql_info(status, h_stmt,

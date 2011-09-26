@@ -1,9 +1,10 @@
 #!/usr/bin/perl
 #-----------------------------------------------------------------------------
-# Original copyright (year updated):
 #
-#   $Id: Makefile.PL 394 2008-01-08 05:29:19Z edpratomo $
-#
+#   Copyright (c) 2011 Stefan Suciu <stefbv70@gmail.com>
+#   Copyright (c) 2011 Damyan Ivanov <dmn@debian.org>
+#   Copyright (c) 2011 Marius Popa <mapopa@gmail.com>
+#   Copyright (c) 2011 Alexandr Ciornii <alexchorny@gmail.com>
 #   Copyright (c) 1999-2008 Edwin Pratomo
 #   Portions Copyright (c) 2001-2005 Daniel Ritz
 #
@@ -109,6 +110,14 @@ else {
     }
 }
 
+my $client_lib = 'fbclient';
+my $use_libfbembed = 0;
+
+if ( $ENV{DBD_FIREBIRD_EMBED} ) {
+    $client_lib = 'fbembed';
+    $use_libfbembed = 1;
+}
+
 if ($interactive) {
 
     # Interactive mode setup
@@ -122,6 +131,7 @@ else {
     print 'FIREBIRD_INCLUDE: ', $fb_INC,  "\n";
     print 'FIREBIRD_LIB    : ', $fb_LIB,  "\n";
     print 'ISQL            : ', $isql_path,"\n";
+    print 'Client library  : ', $client_lib,"\n";
     print "\n";
 
     save_test_parameters();
@@ -157,7 +167,7 @@ my %MakeParams = (
     dist         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
     clean        => {
         FILES =>
-qq(*.xsi *.old t/*.old *~ t/*~ trace.txt t/trace.txt lib/DBD/Firebird/*~ lib/DBD/Firebird/*.old lib/Bundle/DBD/*~ lib/Bundle/DBD/*.old dll.*)
+qq(*.xsi *.old t/*.old *~ t/*~ trace.txt t/trace.txt lib/DBD/Firebird/*~ lib/DBD/Firebird/*.old lib/Bundle/DBD/*~ lib/Bundle/DBD/*.old dll.* fb_init fb_trace_* dbd-fb-testdb.fdb)
     },
     realclean => { FILES => qq($test_conf $test_mark t/*.sql) },
     AUTHOR => 'Edwin Pratomo (edpratomo@users.sourceforge.net)',
@@ -165,7 +175,10 @@ qq(*.xsi *.old t/*.old *~ t/*~ trace.txt t/trace.txt lib/DBD/Firebird/*~ lib/DBD
 'DBD::Firebird is a DBI driver for Firebird, written using Firebird C API.',
     PREREQ_PM          => { DBI          => 1.41 },
     CONFIGURE_REQUIRES => { DBI          => 1.41 },
-    BUILD_REQUIRES     => { 'Test::More' => 0.4 },
+    BUILD_REQUIRES     => {
+        'Test::More' => 0.4,
+        'Test::Exception' => 0,
+    },
     LICENSE            => 'perl',
     MIN_PERL_VERSION   => '5.008001',
     META_MERGE         => {
@@ -197,11 +210,11 @@ SWITCH: {
         last SWITCH;
     };
     $os eq 'linux' && do {
-        $MakeParams{LIBS} = "-L$fb_LIB -lfbclient ";
+        $MakeParams{LIBS} = "-L$fb_LIB -l$client_lib ";
         last SWITCH;
     };
     $os eq 'freebsd' && do {
-        $MakeParams{LIBS} = "-L$fb_LIB -lfbclient ";
+        $MakeParams{LIBS} = "-L$fb_LIB -l$client_lib ";
         last SWITCH;
     };
     $os eq 'hpux' && do {
@@ -615,6 +628,7 @@ sub save_test_parameters {
     push @record, qq(tdsn:=dbi:Firebird:db=$db_path;ib_dialect=3;ib_charset=ISO8859_1) if $db_path;
     push @record, qq(user:=$user) if $user;
     push @record, qq(pass:=$pass) if $pass;
+    push @record, qq(use_libfbembed:=1) if $use_libfbembed;
 
     my $rec = join "\n", @record;
 
@@ -691,10 +705,12 @@ sub prompt_for_settings {
       qq{\n Enter the full path and file name of the test database (.fdb):\n};
     $db_path = prompt_for( 'file', '   Test DB:', $db_path );
 
-    print qq{\n Enter authentication options:\n};
-    $user = prompt_for('str', '   Username:', $user );
-    $pass = prompt_for('str', '   Password:', $pass );
-    print "\n";
+    unless ($use_libfbembed) {
+        print qq{\n Enter authentication options:\n};
+        $user = prompt_for('str', '   Username:', $user );
+        $pass = prompt_for('str', '   Password:', $pass );
+        print "\n";
+    }
 
     save_test_parameters($db_path, $user, $pass);
 
@@ -808,7 +824,7 @@ The default for DBI_USER is 'SYSDBA'.
 
 MSG
 
-    print $msg;
+    print $msg unless $use_libfbembed;
 }
 
 exit 0;
