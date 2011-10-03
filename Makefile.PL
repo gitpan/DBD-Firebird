@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!perl
 #-----------------------------------------------------------------------------
 #
 #   Copyright (c) 2011 Stefan Suciu <stefbv70@gmail.com>
@@ -158,7 +158,7 @@ my %MakeParams = (
     VERSION_FROM => 'Firebird.pm',                              # finds $VERSION
     C            => ['dbdimp.c'],
     H            => [ 'dbdimp.h', 'Firebird.h' ],
-    CCFLAGS      => '-Wall -fno-strict-aliasing',
+    CCFLAGS      => "-Wall -fno-strict-aliasing $Config{ccflags}",
     INC          => qq(-I"$fb_INC" -I"$dbi_arch_dir"),
     OBJECT       => "Firebird.o dbdimp.o",
     LIBS         => [''],
@@ -214,6 +214,10 @@ SWITCH: {
         last SWITCH;
     };
     $os eq 'freebsd' && do {
+        $MakeParams{LIBS} = "-L$fb_LIB -l$client_lib ";
+        last SWITCH;
+    };
+    $os eq 'gnukfreebsd' && do {
         $MakeParams{LIBS} = "-L$fb_LIB -l$client_lib ";
         last SWITCH;
     };
@@ -608,7 +612,7 @@ sub read_data {
 }
 
 sub save_test_parameters {
-    my ($db_path, $user, $pass) = @_;
+    my ($db_path, $db_host, $user, $pass) = @_;
 
     open my $t_fh, '>', $test_conf or die "Can't write $test_conf: $!";
 
@@ -623,9 +627,12 @@ sub save_test_parameters {
         qq(isql:=$isql_path),
     );
 
+    $db_host = $db_host || q{localhost}; # not ||= for compatibility
+
     # Other settings (interactive mode)
+    push @record, qq(host:=$db_host);
     push @record, qq(path:=$db_path) if $db_path;
-    push @record, qq(tdsn:=dbi:Firebird:db=$db_path;ib_dialect=3;ib_charset=ISO8859_1) if $db_path;
+    push @record, qq(tdsn:=dbi:Firebird:db=$db_path;host=$db_host;ib_dialect=3;ib_charset=ISO8859_1) if $db_path;
     push @record, qq(user:=$user) if $user;
     push @record, qq(pass:=$pass) if $pass;
     push @record, qq(use_libfbembed:=1) if $use_libfbembed;
@@ -675,13 +682,14 @@ sub prompt_for_settings {
     my $param = read_test_parameters();
 
     my ($user, $pass) = (qw{SYSDBA masterkey}); # some defaults
-    my ($isql, $db_path);
+    my ($isql, $db_path, $db_host);
 
     # If saved configs exists set them as defaults
     if ( ref $param ) {
         $user = $param->{user} || $user;
         $pass = $param->{pass} || $pass;
         $isql = $param->{isql} || $isql_path;
+        $db_host = $param->{host} || 'localhost';
         $db_path = $param->{path}
           || File::Spec->catfile( File::Spec->tmpdir(), 'dbd-fb-testdb.fdb' );
     }
@@ -701,6 +709,8 @@ sub prompt_for_settings {
     print qq{\n Enter the full paths to the Firebird tools:\n};
     $isql   = prompt_for( 'exe', '      isql:', $isql );
 
+    $db_host = prompt_for('str', '  Hostname:', $db_host );
+
     print
       qq{\n Enter the full path and file name of the test database (.fdb):\n};
     $db_path = prompt_for( 'file', '   Test DB:', $db_path );
@@ -712,7 +722,7 @@ sub prompt_for_settings {
         print "\n";
     }
 
-    save_test_parameters($db_path, $user, $pass);
+    save_test_parameters($db_path, $db_host, $user, $pass);
 
     return;
 }
@@ -791,9 +801,10 @@ DBI_PASS = 'masterkey', or run the script in interactive
 mode. (ISC_USER and ISC_PASSWORD are recognized also), for DBI_DSN the
 default is:
 
-  dbi:Firebird:db=OS_tmp_path/dbd-fb-testdb.fdb;ib_dialect=3;ib_charset=ISO8859_1
+  dbi:Firebird:db=OS_tmp_path/dbd-fb-testdb.fdb;host=localhost;
+      ib_dialect=3;ib_charset=ISO8859_1
 
-If all else fails, email <maintainer_email\@here> for help.
+If all else fails, email <mapopa\@gmail.com> for help.
 
 MSG
 
