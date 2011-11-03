@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               DBD-Firebird
-version:            0.90
+version:            0.91
 abstract:           DBD::Firebird is a DBI driver for Firebird, written using Firebird C API.
 author:
     - Edwin Pratomo (edpratomo@users.sourceforge.net)

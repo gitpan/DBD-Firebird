@@ -18,7 +18,7 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '0.90';
+$VERSION = '0.91';
 
 bootstrap DBD::Firebird $VERSION;
 
@@ -1294,7 +1294,7 @@ to use synchronous writes when working with that database.
 =item buffers (integer, optional)
 
 If given, sets the default number of buffers for the database. Can
-be overriden on connect time. Note that buffers are measured in database
+be overridden on connect time. Note that buffers are measured in database
 pages, not bytes.
 
 

@@ -1452,7 +1452,7 @@ _create_database(params)
         dialect, NULL );
 
     if( (str = ib_error_decode(status)) != NULL ) {
-        croak(str);
+        croak("%s", str);
     }
 
     // disconnect from the just created database
@@ -1539,7 +1539,7 @@ _gfix(params)
     }
 
     if ( (dpb-dpb_buffer) != buflen ) {
-        fprintf(stderr, "# gfix: DPB length mismatch: %ld != %d\n", dpb-dpb_buffer, buflen);
+        fprintf(stderr, "# gfix: DPB length mismatch: %"PRIdPTR" != %d\n", dpb-dpb_buffer, buflen);
         fflush(stderr);
         abort();
     }
