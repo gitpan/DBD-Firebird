@@ -64,7 +64,15 @@ static const int DBI_SQL_BLOB       = SQL_BLOB;
 #undef  SQL_BLOB
 #undef  SQL_BOOLEAN
 
-#include <ibase.h>
+#ifdef __CYGWIN__
+    #define _WIN32
+    #define __stdcall __attribute__((stdcall))
+    #define __cdecl __attribute__((cdecl))
+    #include <ibase.h>
+    #undef _WIN32
+#else
+    #include <ibase.h>
+#endif
 #include <time.h>
 
 /* defines */
@@ -265,6 +273,7 @@ struct imp_sth_st
     char            *timeformat;
     imp_sth_t       *prev_sth;                /* pointer to prev statement */
     imp_sth_t       *next_sth;                /* pointer to next statement */
+    HV              *param_values;      /* For storing the ParamValues attribute */
 };
 
 

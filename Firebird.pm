@@ -18,7 +18,7 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '0.91';
+$VERSION = '1.00';
 
 bootstrap DBD::Firebird $VERSION;
 
@@ -905,6 +905,10 @@ Supported by the driver as proposed by DBI.
 =item B<RowCache>  (integer, read-only)
 
 Not supported by the driver. 
+
+=item B<ParamValues> (hashref, read-only)
+
+Supported by the driver as proposed by DBI.
 
 =back
 

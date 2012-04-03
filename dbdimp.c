@@ -14,7 +14,10 @@
 
 #include "Firebird.h"
 #include <stdint.h>
+
+#ifndef _MSC_VER
 #include <inttypes.h>
+#endif
 
 DBISTATE_DECLARE;
 
@@ -69,7 +72,7 @@ int create_cursor_name(SV *sth, imp_sth_t *imp_sth)
     ISC_STATUS status[ISC_STATUS_LENGTH];
 
     Newxz(imp_sth->cursor_name, 22, char);
-    sprintf(imp_sth->cursor_name, "perl%16.16"PRIx32, (uint32_t)imp_sth->stmt);
+    sprintf(imp_sth->cursor_name, "perl%16.16X", (uint32_t)imp_sth->stmt);
     isc_dsql_set_cursor_name(status, &(imp_sth->stmt), imp_sth->cursor_name, 0);
     if (ib_error_check(sth, status))
         return FALSE;
@@ -1215,7 +1218,7 @@ AV *dbd_st_fetch(SV *sth, imp_sth_t *imp_sth)
          * of rows that the SELECT will return.
          */
 
-        DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_fetch: fetch result: %"PRIdPTR"\n", fetch));
+        DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_fetch: fetch result: %ld\n", fetch));
 
         if (imp_sth->affected < 0)
             imp_sth->affected = 0;
@@ -1774,6 +1777,9 @@ int dbd_st_finish(SV *sth, imp_sth_t *imp_sth)
        commit can call dbd_st_finish function again */
     DBIc_ACTIVE_off(imp_sth);
 
+    if ( imp_sth->param_values != NULL )
+        hv_clear(imp_sth->param_values);
+
     /* if AutoCommit on */
     if (DBIc_has(imp_dbh, DBIcf_AutoCommit))
     {
@@ -1800,6 +1806,11 @@ void dbd_st_destroy(SV *sth, imp_sth_t *imp_sth)
 
     /* freeing cursor name */
     FREE_SETNULL(imp_sth->cursor_name);
+
+    if ( imp_sth->param_values != NULL ) {
+        hv_undef(imp_sth->param_values);
+        imp_sth->param_values = NULL;
+    }
 
     /* freeing in_sqlda */
     if (imp_sth->in_sqlda)
@@ -1983,6 +1994,14 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
         else
             result = newSVpv(imp_sth->cursor_name, strlen(imp_sth->cursor_name));
     }
+    /**************************************************************************/
+    else if (kl==11 && strEQ(key, "ParamValues"))
+    {
+        if (imp_sth->param_values == NULL)
+            return Nullsv;
+        else
+            result = newRV_inc((SV*)imp_sth->param_values);
+    }
     else
         return Nullsv;
 
@@ -2017,7 +2036,7 @@ int dbd_discon_all(SV *drh, imp_drh_t *imp_drh)
     {
         sv_setiv(DBIc_ERR(imp_drh), (IV)1);
         sv_setpv(DBIc_ERRSTR(imp_drh), (char*)"disconnect_all not implemented");
-        DBIh_EVENT2(drh, ERROR_event, DBIc_ERR(imp_drh), DBIc_ERRSTR(imp_drh));
+        (void)DBIh_EVENT2(drh, ERROR_event, DBIc_ERR(imp_drh), DBIc_ERRSTR(imp_drh));
         return FALSE;
     }
     if (PL_perl_destruct_level)
@@ -2194,6 +2213,17 @@ static int ib_fill_isqlda(SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
             return retval;
         }
     }
+
+    do {
+        char *p;
+        STRLEN len;
+
+        if ( imp_sth->param_values == NULL )
+            imp_sth->param_values = newHV();
+
+        p = SvPV(param, len);
+        (void)hv_store( imp_sth->param_values, p, len, newSVsv(value), 0 );
+    } while (0);
 
     /* data type minus nullable flag */
     dtype = ivar->sqltype & ~1;
