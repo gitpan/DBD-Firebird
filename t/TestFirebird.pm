@@ -33,7 +33,8 @@ use constant test_mark => 't/tests-setup.tmp.OK';
 use constant dbd => 'DBD::Firebird';
 
 sub new {
-    my $self = bless {}, shift;
+    my $class = shift;
+    my $self = bless {@_}, $class;
 
     $self->read_cached_configs;
 
@@ -102,8 +103,12 @@ sub connect_to_database {
 
     my $dbh;
     unless ($error_str) {
-        my $default_attr =
-          { RaiseError => 1, PrintError => 0, AutoCommit => 1 };
+        my $default_attr = {
+            RaiseError     => 1,
+            PrintError     => 0,
+            AutoCommit     => 1,
+            ib_enable_utf8 => 1,
+        };
 
         # Merge attributes
         @{$default_attr}{ keys %{$attr} } = values %{$attr};
@@ -210,6 +215,12 @@ sub get_host {
    return q{localhost};
 }
 
+sub get_charset {
+    my $self = shift;
+
+    return $self->{charset} // 'UTF8';
+}
+
 =head2 check_dsn
 
 Parse and check the DSN.
@@ -252,7 +263,8 @@ sub get_dsn {
     $path = File::Spec->catfile( File::Spec->tmpdir(),
         'dbd-fb-testdb.fdb' );
 
-    return "dbi:Firebird:db=$path;host=$host;ib_dialect=3;ib_charset=ISO8859_1";
+    return "dbi:Firebird:db=$path;host=$host;ib_dialect=3;ib_charset="
+        . $self->get_charset;
 }
 
 =head2 get_path
@@ -377,12 +389,15 @@ sub create_test_database {
 
     diag "Creating test database at $path";
 
-    $self->dbd->create_database({
-            db_path => $path,
-            user => $user,
+    $self->dbd->create_database(
+        {   db_path  => $path,
+            user     => $user,
             password => $pass,
+
             # dialect defaults to 3
-        });
+            character_set => 'UTF8',
+        }
+    );
 
     #-- turn forced writes off
 
