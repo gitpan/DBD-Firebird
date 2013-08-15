@@ -228,10 +228,13 @@ qq(*.xsi *.old t/*.old *~ t/*~ trace.txt t/trace.txt lib/DBD/Firebird/*~ lib/DBD
     ABSTRACT =>
 'DBD::Firebird is a DBI driver for Firebird, written using Firebird C API.',
     PREREQ_PM          => { DBI          => 1.41 },
-    CONFIGURE_REQUIRES => { DBI          => 1.41 },
+    CONFIGURE_REQUIRES => {
+        DBI          => 1.41,'
+        File::Which' => 0,
+    },
     BUILD_REQUIRES     => {
         'Test::More' => 0.4,
-        'Test::Exception' => 0,
+        'Test::Exception' => 0.31,
     },
     LICENSE            => 'perl',
     MIN_PERL_VERSION   => '5.008001',

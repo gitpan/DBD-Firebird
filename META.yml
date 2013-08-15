@@ -1,0 +1,28 @@
+--- #YAML:1.0
+name:               DBD-Firebird
+version:            1.12
+abstract:           DBD::Firebird is a DBI driver for Firebird, written using Firebird C API.
+author:
+    - Edwin Pratomo (edpratomo@users.sourceforge.net)
+license:            perl
+distribution_type:  module
+configure_requires:
+    
+        File::Which:  0
+    DBI:                  1.41
+build_requires:
+    Test::Exception:  0.31
+    Test::More:       0.4
+requires:
+    DBI:   1.41
+    perl:  5.008001
+resources:
+    repository:  https://github.com/mariuz/perl-dbd-firebird
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.57_05
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4
