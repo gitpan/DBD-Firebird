@@ -2,7 +2,6 @@ Changes
 dbdimp.c
 dbdimp.h
 eg/pisql
-fb_init
 firebird.conf
 Firebird.h
 Firebird.pm
