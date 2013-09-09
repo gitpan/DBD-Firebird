@@ -2,6 +2,7 @@ Changes
 dbdimp.c
 dbdimp.h
 eg/pisql
+fb_init
 firebird.conf
 Firebird.h
 Firebird.pm
@@ -60,4 +61,5 @@ t/TestFirebirdEmbedded.pm
 t/zz-cleanup.t
 typemap
 var/.keep_dir
-META.yml                                 Module meta-data (added by MakeMaker)
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)
