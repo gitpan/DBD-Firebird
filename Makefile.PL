@@ -108,8 +108,7 @@ $FB::libfbembed_available = 0;
 
 # We set FIREBIRD_HOME from the first found of:
 # 1. Environment variable
-# 2. Subdirectory of FIREBIRD_HOME
-# 3. Helper subs (search Firebird in the known locations)
+# 2. Helper subs (search Firebird in the known locations)
 
 unless ($EMBEDDED) {
     # 1. Environment variables
@@ -281,34 +280,6 @@ SWITCH: {
     };
     $os eq 'gnukfreebsd' && do {
         $MakeParams{LIBS} = "-L$FB::LIB -l$client_lib ";
-        last SWITCH;
-    };
-    $os eq 'hpux' && do {
-        $MakeParams{LIBS} = '-lgds -ldld';
-        last SWITCH;
-    };
-    $os eq 'sunos' && do {
-        $MakeParams{LIBS} = '-lgdslib -ldl';
-        last SWITCH;
-    };
-    $os eq 'irix' && do {
-        $MakeParams{LIBS} = '-lgds -lsun';
-        last SWITCH;
-    };
-    $os eq 'aix' && do {
-        $MakeParams{LIBS} = '-lgdsshr';
-        last SWITCH;
-    };
-    $os eq 'dgux' && do {
-        $MakeParams{LIBS} = '-lgds -lgdsf -ldl -ldgc';
-        last SWITCH;
-    };
-    $os eq 'osf1' && do {
-        $MakeParams{LIBS} = '-lgds';
-        last SWITCH;
-    };
-    $os eq 'sysv' && do {
-        $MakeParams{LIBS} = '-lgds -lnsl -lsocket -ldl';
         last SWITCH;
     };
     $os eq 'darwin' && do {

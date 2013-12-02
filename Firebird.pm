@@ -18,7 +18,7 @@ require Exporter;
 require DynaLoader;
 
 @ISA = qw(Exporter DynaLoader);
-$VERSION = '1.15';
+$VERSION = '1.16';
 
 bootstrap DBD::Firebird $VERSION;
 
@@ -1346,8 +1346,8 @@ If yours is default to AutoCommit on, you can put the snippet within a block:
 
 =item * Using $dbh->{ib_softcommit} = 1
 
-This is a driver-specific attribute,You may want
-to look at t/40cursoron.t to see it in action.
+This is a driver-specific attribute,You may want to look at
+t/70-nested-sth.t to see it in action.
 
 =back
 

@@ -9,7 +9,7 @@ build_requires:
 configure_requires:
   DBI: 1.41
 dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.132140'
+generated_by: 'ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.132830'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -24,4 +24,4 @@ requires:
   perl: 5.008001
 resources:
   repository: https://github.com/mariuz/perl-dbd-firebird
-version: 1.15
+version: 1.16
