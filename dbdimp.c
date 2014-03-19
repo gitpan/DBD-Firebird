@@ -1050,6 +1050,9 @@ int dbd_st_execute(SV *sth, imp_sth_t *imp_sth)
     int        result = -2;
     int        row_count = 0;
 
+    if (DBIc_ACTIVE(imp_sth))
+        dbd_st_finish_internal( sth, imp_sth, TRUE);
+
     DBI_TRACE_imp_xxh(imp_sth, 2, (DBIc_LOGPIO(imp_sth), "dbd_st_execute\n"));
 
     /* if not already done: start new transaction */
@@ -1790,8 +1793,25 @@ int dbd_st_finish_internal(SV *sth, imp_sth_t *imp_sth, int honour_auto_commit)
     if (imp_sth->type != isc_info_sql_stmt_exec_procedure)
         isc_dsql_free_statement(status, (isc_stmt_handle *)&(imp_sth->stmt), DSQL_close);
 
-    if (ib_error_check(sth, status))
-        return FALSE;
+    /* Ignore errors when closing already closed cursor (sqlcode -501).
+       May happen when closing "select * from sample" statement, which was
+       closed by the server because of a "drop table sample" statement.
+       There is no point to error-out here, since nothing bad has happened --
+       the statement is closed, just without we knowing. There is no resource
+       leak and the user can't and needs not do anything.
+     */
+    if ((status[0] == 1) && (status[1] > 0)) {
+        long sqlcode = isc_sqlcode(status);
+
+        if (sqlcode != -501) {
+            if (ib_error_check(sth, status))
+                return FALSE;
+        }
+        else
+        {
+            DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_finish: ignoring error -501 from isc_dsql_free_statement.\n"));
+        }
+    }
 
     DBI_TRACE_imp_xxh(imp_sth, 3, (DBIc_LOGPIO(imp_sth), "dbd_st_finish: isc_dsql_free_statement passed.\n"));
 
@@ -1928,16 +1948,19 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
 
     i = DBIc_NUM_FIELDS(imp_sth);
 
+    if (!imp_sth)
+	return Nullsv;
+
     /**************************************************************************/
     if (kl==4 && strEQ(key, "TYPE"))
     {
         AV *av;
 
-        if (!imp_sth || !imp_sth->in_sqlda || !imp_sth->out_sqlda)
+        if (!imp_sth->in_sqlda || !imp_sth->out_sqlda)
             return Nullsv;
 
         av = newAV();
-        result = newRV(sv_2mortal((SV*)av));
+        result = newRV_inc(sv_2mortal((SV*)av));
         while(--i >= 0)
             av_store(av, i,
                      newSViv(ib2sql_type(imp_sth->out_sqlda->sqlvar[i].sqltype)));
@@ -1947,11 +1970,11 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
     {
         AV *av;
 
-        if (!imp_sth || !imp_sth->in_sqlda || !imp_sth->out_sqlda)
+        if (!imp_sth->in_sqlda || !imp_sth->out_sqlda)
             return Nullsv;
 
         av = newAV();
-        result = newRV(sv_2mortal((SV*)av));
+        result = newRV_inc(sv_2mortal((SV*)av));
         while(--i >= 0)
             av_store(av, i, newSViv(imp_sth->out_sqlda->sqlvar[i].sqlscale));
 
@@ -1961,11 +1984,11 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
     {
         AV *av;
 
-        if (!imp_sth || !imp_sth->in_sqlda || !imp_sth->out_sqlda)
+        if (!imp_sth->in_sqlda || !imp_sth->out_sqlda)
             return Nullsv;
 
         av = newAV();
-        result = newRV(sv_2mortal((SV*)av));
+        result = newRV_inc(sv_2mortal((SV*)av));
         while(--i >= 0)
             av_store(av, i, newSViv(imp_sth->out_sqlda->sqlvar[i].sqllen));
     }
@@ -1974,11 +1997,11 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
     {
         AV *av;
 
-        if (!imp_sth || !imp_sth->in_sqlda || !imp_sth->out_sqlda)
+        if (!imp_sth->in_sqlda || !imp_sth->out_sqlda)
             return Nullsv;
 
         av = newAV();
-        result = newRV(sv_2mortal((SV*)av));
+        result = newRV_inc(sv_2mortal((SV*)av));
         while(--i >= 0)
         {
             if (imp_sth->out_sqlda->sqlvar[i].aliasname_length > 0)
@@ -2000,11 +2023,11 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
     {
         AV *av;
 
-        if (!imp_sth || !imp_sth->in_sqlda || !imp_sth->out_sqlda)
+        if (!imp_sth->in_sqlda || !imp_sth->out_sqlda)
             return Nullsv;
 
         av = newAV();
-        result = newRV(sv_2mortal((SV*)av));
+        result = newRV_inc(sv_2mortal((SV*)av));
         while(--i >= 0)
             av_store(av, i, boolSV((imp_sth->out_sqlda->sqlvar[i].sqltype & 1) != 0));
     }
@@ -2013,16 +2036,14 @@ SV* dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
     {
         if (imp_sth->cursor_name == NULL)
             return Nullsv;
-        else
-            result = newSVpv(imp_sth->cursor_name, strlen(imp_sth->cursor_name));
+	result = newSVpv(imp_sth->cursor_name, strlen(imp_sth->cursor_name));
     }
     /**************************************************************************/
     else if (kl==11 && strEQ(key, "ParamValues"))
     {
         if (imp_sth->param_values == NULL)
             return Nullsv;
-        else
-            result = newRV_inc((SV*)imp_sth->param_values);
+	result = newRV_inc((SV*)imp_sth->param_values);
     }
     else
         return Nullsv;
@@ -2924,7 +2945,7 @@ unsigned get_charset_bytes_per_char(const ISC_SHORT subtype, SV *sth)
     //warn("Q: How many bytes/char in CS %d?", subtype & 0xff);
 
     if ( (p = imp_dbh->charset_bytes_per_char) == NULL ) {
-        XSQLDA *out;
+        XSQLDA *out = NULL;
         XSQLVAR *var;
         isc_stmt_handle stmt = 0;
         ISC_STATUS status[ISC_STATUS_LENGTH];
